@@ -13,10 +13,14 @@ v-expansion-panel-content#dimension-editor
           v-flex#dimension-unit-selector
             p Units:
             v-btn-toggle(v-model="dimensionUnits" mandatory)
-              v-btn(small flat value="percent") %
-              v-btn(small flat value="inches") in
-              v-btn(small flat value="millimeters") mm
-              v-btn(small flat value="pixels") px
+              v-btn(small flat value="percent") {{ Units.PERCENT }}
+              v-btn(small flat value="percent w") {{ Units.PERCENT_W }}
+              v-btn(small flat value="percent h") {{ Units.PERCENT_H }}
+              v-btn(small flat value="pixels") {{ Units.PIXELS }}
+              v-btn(small flat value="points") {{ Units.POINTS }}
+              v-btn(small flat value="inches") {{ Units.INCHES }}
+              v-btn(small flat value="centimeters") {{ Units.CENTIMETERS }}
+              v-btn(small flat value="millimeters") {{ Units.CENTIMETERS }}
 
           v-flex(v-if="modeXYWH")
             v-layout#layout-xywh(row wrap)
@@ -50,8 +54,8 @@ v-expansion-panel-content#dimension-editor
 <script>
   import { isString } from 'lodash'
   import { mapGetters, mapActions } from 'vuex'
-  import { XYWH, INSET,
-    PERCENT, PIXELS, INCHES, MILLIMETERS } from '../../../store/dimensions.js'
+  import { XYWH, INSET } from '../../../store/dimensions.js'
+  import * as Units from '../../../util/units.js'
 
 
   /* FIXME: This is an unmitigated disaster.
@@ -68,77 +72,105 @@ v-expansion-panel-content#dimension-editor
     - dimension-specific variables
   */
   const VARIABLES = {
-    [PERCENT]: {
-      step:          "0.1",
-      decimalDigits: 1,
-      name:          "%",
+    ["percent"]: {
+      step:          "1",
+      decimalDigits: 2,
+      name:          Units.PERCENT,
       description:   "percentage of total width or height",
     },
-    [PIXELS]: {
+    ["percent w"]: {
+      step:          "1",
+      decimalDigits: 2,
+      name:          Units.PERCENT_W,
+      description:   "percentage of total width",
+    },
+    ["percent h"]: {
+      step:          "1",
+      decimalDigits: 2,
+      name:          Units.PERCENT_H,
+      description:   "percentage of total height",
+    },
+    ["pixels"]: {
       step:          "1",
       decimalDigits: 0,
-      name:          "px",
+      name:          Units.PIXELS,
       description:   "pixels",
     },
-    [INCHES]: {
+    ["points"]: {
+      step:          "1",
+      decimalDigits: 0,
+      name:          Units.POINTS,
+      description:   "points"
+    },
+    ["inches"]: {
       step:          "0.01",
       decimalDigits: 2,
-      name:          "in",
+      name:          Units.INCHES,
       description:   "inches",
     },
-    [MILLIMETERS]: {
+    ["centimeters"]: {
+      step:          "0.1",
+      decimalDigits: 1,
+      name:          Units.CENTIMETERS,
+      description:   "centimeters",
+    },
+    ["millimeters"]: {
       step:          "1",
       decimalDigits: 1,
-      name:          "mm",
+      name:          Units.MILLIMETERS,
       description:   "millimeters",
     }
   }
 
   const
     fromUnitToUnit = (measure, dimension, oldUnit, newUnit, size) => {
-      const base = fromUnit(measure, dimension, oldUnit, size)
-      return toUnit(base, dimension, newUnit, size)
-    },
+      return Units.convert(measure, oldUnit, newUnit, {
+        containerW: size.w,
+        containerH: size.h,
+        whMode: (dimension === 'w')
+      })
+    },  
 
     fromUnit = (measure, dimension, currentUnit, size) => {
+      let from;
+
       switch(currentUnit) {
-        case "percent":
-          return measure
-          break
-        case "inches":
-          return measure / size[dimension] * 100
-          break
-        case "millimeters":
-          return fromUnit((measure / 25.4), dimension, 'inches', size)
-          break
-        case "pixels":
-          return fromUnit((measure / 300), dimension, 'inches', size)
-          break
-        default:
-          throw new Error(`Unrecognized unit: ${currentUnit}`)
+        case "percent"  : from = Units.PERCENT  ; break;
+        case "percent w": from = Units.PERCENT_W; break;
+        case "percent h": from = Units.PERCENT_H; break;
+        case "pixels" : from = Units.PIXELS; break;
+        case "points" : from = Units.PIXELS; break;
+        case "inches" : from = Units.INCHES; break;
+        case "centimeters" : from = Units.CENTIMETERS; break;
+        case "millimeters" : from = Units.MILLIMETERS; break;
       }
+
+      return Units.convert(measure, from, Units.PERCENT, {
+        containerW: size.w,
+        containerH: size.h,
+        whMode: dimension === 'x' || dimension === 'w'
+      })
     },
-
     toUnit = (measure, dimension, currentUnit, size) => {
-      let stringDimension
+      let to, value;
+
       switch(currentUnit) {
-        case "percent":
-          stringDimension = measure.toFixed(1)
-          break
-        case "inches":
-          stringDimension = (size[dimension] * measure * .01).toFixed(2)
-          break
-        case "millimeters":
-          stringDimension = (toUnit(measure, dimension, 'inches', size) * 25.4).toFixed(1)
-          break
-        case "pixels":
-          stringDimension = (toUnit(measure, dimension, 'inches', size) * 300).toFixed(0)
-          break
-        default:
-          throw new Error(`Unrecognized unit: ${currentUnit}`)
+        // precision 2
+        case "percent"  : to = Units.PERCENT  ; value = measure.toFixed(2); break;
+        case "percent w": to = Units.PERCENT_W; value = measure.toFixed(2); break;
+        case "percent h": to = Units.PERCENT_H; value = measure.toFixed(2); break;
+        case "pixels" : to = Units.PIXELS; value = measure.toFixed(0); break
+        case "points" : to = Units.POINTS; value = measure.toFixed(0); break
+        case "inches" : to = Units.INCHES; value = measure.toFixed(2); break;
+        case "centimeters" : to = Units.CENTIMETERS; value = measure.toFixed(1); break;
+        case "millimeters" : to = Units.MILLIMETERS; value = measure.toFixed(1); break;
       }
 
-      return parseFloat(stringDimension)
+      return Units.convert(parseFloat(value), currentUnit, to, {
+        containerW: size.w,
+        containerH: size.h,
+        whMode: dimension === 'x' || dimension === 'w'
+      })
     },
 
     roundToUnit = (dimensionProperty, dimensionObject, currentUnit) => {
@@ -161,17 +193,17 @@ v-expansion-panel-content#dimension-editor
 
     data() {
       const dimensionsModel = { ...this.dimensions }
-      translateToNewUnits(dimensionsModel, this.dimensions, dimensionsModel.units || PERCENT, this.size)
+      translateToNewUnits(dimensionsModel, this.dimensions, dimensionsModel.units || "percent", this.size)
 
       return {
-        XYWH, INSET, PERCENT, PIXELS, INCHES, MILLIMETERS,
+        XYWH, INSET, Units,
         dimensionsModel
       }
     },
 
     watch: {
       dimensions(newDimensions) {
-        translateToNewUnits(this.dimensionsModel, newDimensions, this.dimensionsModel.units || PERCENT, this.size)
+        translateToNewUnits(this.dimensionsModel, newDimensions, this.dimensionsModel.units || "percent", this.size)
       }
     },
 
@@ -184,7 +216,7 @@ v-expansion-panel-content#dimension-editor
       },
 
       dimensionUnits: {
-        get() { return this.dimensions.units || PERCENT },
+        get() { return this.dimensions.units || "percent" },
         set(newUnits) {
           translateToNewUnits(this.dimensionsModel, this.dimensions, newUnits, this.size)
           this.updateDimension({ ...this.dimensions, units: newUnits })
@@ -194,10 +226,15 @@ v-expansion-panel-content#dimension-editor
       modeXYWH() { return this.dimensionLayout == XYWH },
       modeInset() { return this.dimensionLayout == INSET },
 
-      modePercent() { return this.dimensionUnits == PERCENT },
-      modeInches() { return this.dimensionUnits == INCHES },
-      modeMM() { return this.dimensionUnits == MILLIMETERS },
-      modePixels() { return this.dimensionUnits == PIXELS },
+      modePercent() { return this.dimensionUnits == "percent" },
+      modePercentW() { return this.dimensionUnits == "percent w"},
+      modePercentH() { return this.dimensionUnits == "percent h"},
+      modePixels() { return this.dimensionUnits == "pixels" },
+      modePoints() { return this.dimensionUnits == "points" },
+      modeInches() { return this.dimensionUnits == "inches" },
+      modeCentimeters() { return this.dimensionUnits == "centimeters" },
+      modeMillimeters() { return this.dimensionUnits == "millimeters" },
+      
 
       unitStep() { return VARIABLES[this.dimensionUnits].step },
       unitName() { return VARIABLES[this.dimensionUnits].name },
